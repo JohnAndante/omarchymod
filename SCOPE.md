@@ -69,18 +69,26 @@ Lua-first** e tem arquitetura diferente. Confirmado na maquina do usuario
 
 ## O que o companion package faz (superficie pequena)
 
-1. **Detecta Omarchy** (`/usr/share/omarchy` existe, ou pacote instalado).
-2. **Ajusta o default do managed path do hyprmod** para
-   `~/.config/hypr/hyprmod/hyprland-gui.lua`. Ver "Reload prefix" abaixo, isso
-   nao e cosmetico.
-3. **Injeta o include** no `~/.config/hypr/hyprland.lua` (delegando pro
-   `hyprmod.core.setup`, que ja faz isso). A linha entra no fim do arquivo, que
-   e o lugar certo: ultima palavra ganha, escolha explicita do usuario vence os
-   defaults e o tema.
+1. **Detecta Omarchy** (`default/hypr/bootstrap.lua` presente em `$OMARCHY_PATH`,
+   `/usr/share/omarchy` ou `~/.local/share/omarchy`).
+2. **Aponta o GSetting `config-path` do hyprmod** para
+   `~/.config/hypr/hyprmod/hyprland-gui` (base sem sufixo; o hyprmod adiciona
+   `.lua`/`.conf`). Ver "Reload prefix + package.path" abaixo, isso nao e
+   cosmetico.
+3. **Escreve o include** no `~/.config/hypr/hyprland.lua`
+   (`require("hypr.hyprmod.hyprland-gui")`, marker `omarchymod managed`). Nao
+   delega pro `hm_setup.run_setup()` porque o nome de modulo que ele gera nao
+   resolve no Omarchy (ver secao abaixo). A linha entra no fim do arquivo: ultima
+   palavra ganha.
 4. **Sincroniza o gtk.css** do tema ativo para `~/.config/gtk-4.0/gtk.css` (e
-   `gtk-3.0`), e dropa um hook `theme-set.d` pra refazer na troca de tema.
+   `gtk-3.0`), e dropa um hook `theme-set.d` (`omarchymod sync-gtk`) que so
+   reescreve arquivos que o companion ja possui.
 5. **Empacota no AUR** (`omarchymod` / `omarchymod-git`), seguindo o padrao do
    ecossistema (`hyprmod`, `omarchist-bin` ja estao la). Nao Flatpak/AppImage.
+
+Tudo isso passa pela camada de backup: `omarchymod uninstall` reverte cada
+mudanca, e pula (sem clobber) qualquer arquivo que divergiu do que o companion
+escreveu.
 
 Fora de escopo, decisao consciente, **o companion nunca toca**: `looknfeel.lua`,
 `monitors.lua`, `input.lua`, `bindings.lua`, defaults do Omarchy em
@@ -142,23 +150,35 @@ override via migrations, mas so com guarda forte. Exemplos checados em
 
 Padrao do Omarchy: so sobrescreve arquivo que ele prova estar intocado. Uma
 linha `require(...)` acrescentada no fim do `hyprland.lua` sobrevive a isso. O
-risco residual e uma migration futura menos disciplinada; mitigacoes: o
-`hyprmod.core.setup.needs_setup()` re-detecta e re-adiciona no proximo launch, e
-o manifesto + backup permitem reverter se algo pior acontecer.
+risco residual e uma migration futura menos disciplinada; mitigacoes: o companion
+re-detecta pelo marker e re-adiciona, e o manifesto + backup permitem reverter se
+algo pior acontecer.
 
-## Reload prefix: o managed path tem que ficar sob `hypr/`
+## Reload prefix + package.path: o managed path fica sob `hypr/` e o companion escreve o include
 
-O `bootstrap.lua` do Omarchy so limpa `package.loaded` para modulos com prefixo
-`default.hypr`, `hypr` ou `omarchy.current.theme`. O default do hyprmod
-(`~/.config/hypr/hyprland-gui.lua`, modulo `hyprland-gui`) **nao bate em
-nenhum**. Consequencia: depois de `hyprctl reload` as configs do HyprMod ficam
-stale ate um restart completo do Hyprland, porque o `require` fica cacheado e nao
-re-executa.
+Dois fatos do `bootstrap.lua` do Omarchy, os dois checados com `lua` real:
 
-Fix: o companion seta o managed path para `~/.config/hypr/hyprmod/hyprland-gui.lua`
-(modulo `hypr.hyprmod.hyprland-gui`, bate no prefixo `hypr`, recarrega). O
-hyprmod ja tem a constante `HYPRMOD_DIR = ~/.config/hypr/hyprmod`, so nao usa
-como base do managed file por padrao.
+1. So limpa `package.loaded` para modulos com prefixo `default.hypr`, `hypr` ou
+   `omarchy.current.theme`. Modulo fora desses nao recarrega no `hyprctl reload`,
+   fica cacheado ate restart completo do Hyprland.
+2. O `package.path` e enraizado em `~/.config` (`home.."/.config/?.lua"`, literal,
+   nao `$XDG_CONFIG_HOME`), **nao** em `~/.config/hypr`. Entao `require("a.b")`
+   resolve `~/.config/a/b.lua`.
+
+Consequencia pro managed file em `~/.config/hypr/hyprmod/hyprland-gui.lua`:
+
+- O include correto e `require("hypr.hyprmod.hyprland-gui")` -> resolve o arquivo
+  certo E bate no prefixo `hypr` (recarrega). Confirmado: `package.searchpath`
+  acha, e `package.loaded[...]` vira `nil` depois do bootstrap.
+- O `hyprmod.core.setup` calcula o nome do modulo relativo a
+  `entrypoint.parent` (`~/.config/hypr`), o que da `require("hyprmod.hyprland-gui")`
+  -- que **nao resolve** no `package.path` do Omarchy (`NOT FOUND`). Por isso o
+  companion **escreve o include ele mesmo** (`integrate._include_block`), com o
+  marker `omarchymod managed`, em vez de chamar `hm_setup.run_setup()`. Ainda usa
+  o `hyprmod.core.settings` pra apontar o GSetting `config-path`.
+
+Candidato a fix upstream: fazer o `hyprmod.core.setup` detectar o layout do
+Omarchy e calcular o modulo relativo a `~/.config`.
 
 ## Sobreposicao de escopo com o theme layer
 
@@ -177,6 +197,32 @@ Decisao em aberto: o companion deveria configurar o hyprmod pra **nao gerenciar*
 as chaves que o theme layer do Omarchy possui (cores/bordas/gradientes), ou
 aceitar o conflito e documentar. Precisa ver se o hyprmod tem um mecanismo de
 "ignore key" ou se isso e mudanca upstream.
+
+## Perigo: automacao de monitor do Omarchy reescreve `monitors.lua` (achado na validacao 2026-09-03)
+
+Rodando o teste de verdade na maquina do usuario: depois de mexer no editor de
+monitor do hyprmod e fechar a janela, o `~/.config/hypr/monitors.lua` tinha sido
+reescrito (linhas `omarchy_gdk_scale` e `omarchy_monitor_scale` mudaram de
+`2`/`"auto"` para `1`/`1`), e o arranjo de monitores "flipou".
+
+Causa: o `omarchy-hyprland-monitor-watch` roda em background (autostart do
+Omarchy) vigiando eventos de monitor. Quando o hyprmod aplica scale/mode ao vivo
+via `hyprctl`, o watcher detecta e **persiste a mudanca de volta no
+`monitors.lua`** via `omarchy-hyprland-monitor-scaling`.
+
+Isso e dano lateral que a camada de backup do companion **nao cobre**: a gente
+nunca toca `monitors.lua` de proposito, entao nao tem backup dele, e o estrago
+veio por um caminho de terceiro (hyprctl -> evento -> automacao do Omarchy).
+
+Opcoes pra tratar (nenhuma fechada):
+
+- Companion pausa/mata o `omarchy-hyprland-monitor-watch` enquanto o hyprmod roda
+  e restaura depois (wrapper no launch do hyprmod).
+- hyprmod nao faz live-apply de monitor no Omarchy (so escreve no managed file, o
+  usuario da reload). Provavelmente mudanca upstream.
+- Companion faz backup do `monitors.lua` (e talvez dos outros 4 override files do
+  Omarchy) no install, mesmo sem tocar neles, so pra ter rede se algo lateral
+  mexer. Barato e defensivo.
 
 ## gtk.css / libadwaita
 
@@ -209,23 +255,29 @@ comentarios/formatacao, segue `source =` / `require` atraves de multiplos
 arquivos, resolve globs, escreve so o que mudou, expõe `atomic_write`. E o que
 sustenta tanto o append seguro do include quanto o managed file.
 
-## Estado atual
+## Estado atual (2026-09-03)
 
-- So existe como clone local em `~/Projects/omarchymod` com remote `upstream`
-  apontando pro hyprmod original. Nenhum repo criado na conta/org do usuario.
-- Com a decisao de companion package, o clone do hyprmod aqui vira material de
-  estudo, nao base de fork. O companion `omarchymod` seria um repo novo e
-  pequeno.
+- Repo publico em `github.com/JohnAndante/omarchymod`, GPL-3.0. Issue #1
+  ("Bootstrap the companion package").
+- Companion **prototipado e validado na maquina do usuario**: `omarchymod`
+  package com `backup.py` (manifesto + backups timestamped + revert cirurgico),
+  `detect.py`, `gtk_theme.py`, `integrate.py`, `cli.py` (`install` / `uninstall`
+  [`--purge`] / `status` / `sync-gtk`). 35 testes, ruff + pyright limpos.
+- Ciclo install -> usar a GUI do hyprmod -> uninstall rodou na maquina real:
+  `hyprland.lua` restaurado byte a byte, gtk.css aplicou o tema, o managed file
+  recarrega no lugar certo. Instalado via `uv tool install .` por enquanto.
+- **Achado na validacao**: o dano lateral em `monitors.lua` (secao "Perigo:
+  automacao de monitor" acima). Precisa tratar antes de recomendar uso diario.
 
 ## Proximos passos
 
-1. Prototipar o companion como script/pacote minimo: deteccao de Omarchy +
-   backup/manifesto + ajuste do managed path + delegacao pro
-   `hyprmod.core.setup` + hook de gtk.css.
-2. Validar o ciclo de backup/uninstall num container ou VM Omarchy antes de
-   rodar na maquina do usuario.
-3. Decidir a sobreposicao de escopo com o theme layer (ignorar chaves de cor vs.
+1. Tratar o perigo do `monitors.lua` (pausar o monitor-watch do Omarchy durante
+   o hyprmod, ou backup defensivo dos 5 override files no install).
+2. Decidir a sobreposicao de escopo com o theme layer (ignorar chaves de cor vs.
    documentar o conflito).
-4. Sondar o autor do hyprmod sobre aceitar a deteccao de Omarchy + hook de
-   gtk.css upstream (caminho 1 da decisao principal).
+3. Sondar o autor do hyprmod sobre aceitar upstream: (a) calculo do modulo Lua
+   relativo a `~/.config` no layout do Omarchy, (b) hook de gtk.css, (c) nao
+   live-apply de monitor no Omarchy.
+4. Empacotar (AUR `omarchymod` / `omarchymod-git`), instalador que nao dependa de
+   checkout.
 5. Look no Omarchist antes de duplicar o theme designer.
