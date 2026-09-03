@@ -1,0 +1,42 @@
+[project]
+name = "omarchymod"
+version = "0.0.0"
+description = "Companion package that makes hyprmod work properly inside Omarchy"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Walker Silvestre" }]
+dependencies = [
+    "hyprmod @ git+https://github.com/BlueManCZ/hyprmod.git",
+]
+
+[project.scripts]
+omarchymod = "omarchymod.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "pyright>=1.1.380",
+    "pygobject-stubs>=2.17.0",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pyright]
+include = ["omarchymod", "tests"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
