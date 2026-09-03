@@ -2,7 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from omarchymod import backup, cli, detect
+from omarchymod import __version__, backup, cli, detect
+
+
+def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"])
+    assert exc.value.code == 0
+    assert __version__ in capsys.readouterr().out
 
 
 @pytest.fixture

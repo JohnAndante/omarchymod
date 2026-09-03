@@ -5,7 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from omarchymod import backup, detect, gtk_theme
+from omarchymod import __version__, backup, detect, gtk_theme
 from omarchymod.paths import display_path
 
 
@@ -122,6 +122,7 @@ def _cmd_sync_gtk(_args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="omarchymod", description=__doc__)
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     install = sub.add_parser("install", help="wire hyprmod into Omarchy")

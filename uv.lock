@@ -68,14 +68,13 @@ wheels = [
 [[package]]
 name = "hyprmod"
 version = "0.4.0"
-source = { git = "https://github.com/BlueManCZ/hyprmod.git#ffd47d804d8996cf3852dbb7ca1c949c424a57fb" }
+source = { git = "https://github.com/BlueManCZ/hyprmod.git?rev=v0.4.0#7480b39adbd14da89fca54e4fc68ea397b081f44" }
 dependencies = [
     { name = "hyprland-config" },
     { name = "hyprland-monitors" },
     { name = "hyprland-schema" },
     { name = "hyprland-socket" },
     { name = "hyprland-state" },
-    { name = "pycairo" },
     { name = "pygobject" },
 ]
 
@@ -99,7 +98,7 @@ wheels = [
 
 [[package]]
 name = "omarchymod"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "hyprmod" },
@@ -114,7 +113,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "hyprmod", git = "https://github.com/BlueManCZ/hyprmod.git" }]
+requires-dist = [{ name = "hyprmod", git = "https://github.com/BlueManCZ/hyprmod.git?rev=v0.4.0" }]
 
 [package.metadata.requires-dev]
 dev = [
