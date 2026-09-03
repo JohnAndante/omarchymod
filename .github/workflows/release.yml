@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: sudo apt-get update && sudo apt-get install -y libcairo2-dev libgirepository-2.0-dev libgtk-4-dev libadwaita-1-dev gir1.2-gnomedesktop-4.0
+      - run: uv sync
+      - run: uv run pytest tests/ -q
+
+      - name: Check tag matches project version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          project="$(uv run python -c 'import omarchymod; print(omarchymod.__version__)')"
+          if [ "$tag" != "$project" ]; then
+            echo "tag v$tag does not match project version $project" >&2
+            exit 1
+          fi
+
+      - name: Extract changelog section
+        run: |
+          awk -v v="${GITHUB_REF_NAME#v}" '
+            $0 ~ "^## \\[" v "\\]" { p = 1; next }
+            p && /^## \[/ { exit }
+            p { print }
+          ' CHANGELOG.md > notes.md
+          cat notes.md
+
+      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
